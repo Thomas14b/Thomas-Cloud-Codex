@@ -1,0 +1,24 @@
+{
+  "categories": {
+    "floor": 62,
+    "shell": 14,
+    "outerWalls": 144,
+    "doors": 12,
+    "ceiling": 2,
+    "windows": 150,
+    "bed": 9,
+    "rug": 186,
+    "bedding": 28,
+    "desk": 36,
+    "wardrobe": 5,
+    "kitchen": 88,
+    "bathroom": 140,
+    "decor": 66,
+    "lamps": 26,
+    "partitions": 9
+  },
+  "area": 14.05,
+  "mainWidth": 2.3368,
+  "mainLength": 3.9878,
+  "height": 2.5
+}
