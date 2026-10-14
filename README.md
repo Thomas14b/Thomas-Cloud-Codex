@@ -1,23 +1,23 @@
 # 失敗學院 · Failure Monsters
 
-Mobile-first Season 1 **prototype**, replacing the previous room studio on the main branch.
+Functional React/TypeScript game with Netlify Identity, Netlify Database (Postgres), Functions and AI Gateway. Includes a role-protected administrator dashboard.
 
-## Run
+- Email signup/login/recovery and persistent player profiles.
+- Mission reservations, reflections, witness confirmation, card collection/sealing/trading, credits and reward redemption.
+- Admin player search, progress, reflection/feedback views, mission/reward controls and fulfillment.
+- Private AI guide via Gateway (`gpt-4.1-mini`), 20 attempts/player/day and 500/site/month. These are request caps, not a billing limit.
+- Admin dashboard excludes private AI conversations. Infrastructure owners still control the database; this is not end-to-end encryption.
 
-Serve this folder with any static HTTP server, e.g. `python3 -m http.server 8080`, then open the local URL.
+## Development
 
-## Demo
+```sh
+npm ci
+npm test
+npm run test:ui
+npm run build
+netlify dev
+```
 
-Six missions, one for each spirit family; QR deep links use `?mission=HK006` etc. Progress uses localStorage only. Bobo is a scripted demo, not a live AI. Duo verification, multi-account ownership, server-enforced card uses, permanent sealing, trading, rewards and full 10-level progression are **not implemented**. Never use the prototype's local usage counter to issue real limited-edition cards or prizes.
+Identity requires a deployed Netlify site for real authentication. Browser tests use explicit transport fixtures; database tests execute the production migrations in PGlite.
 
-## Roadmap
-
-1. React + TypeScript PWA and character assets.
-2. Auth, database, immutable card-use ledger, server-side atomic reservations and sealing.
-3. Separate witness account for duo validation; private reflection owned by player.
-4. Real AI guide with privacy safeguards and usage limits.
-5. Printable QR codes linked to the final test domain, redemption and admin tools.
-
-## Historical source
-
-The prior project is preserved on branch `backup-before-failure-monsters-20261014`.
+See [setup](docs/SETUP.md), [implementation](docs/IMPLEMENTATION.md) and [verification](docs/VERIFICATION.md).

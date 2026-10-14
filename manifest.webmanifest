@@ -1,8 +1,0 @@
-{
-  "name": "失敗學院 Failure Monsters",
-  "short_name": "失敗學院",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#f7f1e5",
-  "theme_color": "#214b40"
-}
