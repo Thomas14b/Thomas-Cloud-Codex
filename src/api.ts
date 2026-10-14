@@ -1,36 +1,28 @@
-import { createClient } from "@supabase/supabase-js";
-const url = import.meta.env.VITE_SUPABASE_URL,
-  key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const configured = Boolean(
-  url && key && !url.includes("YOUR_PROJECT") && !key.includes("YOUR_PUBLIC"),
-);
-export const db = configured ? createClient(url, key) : null;
+export async function request<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response
+    .json()
+    .catch(() => ({ error: "服務回應格式不正確，請重新開啟網站" }));
+  if (!response.ok) throw new Error(data.error || "服務暫時無法使用");
+  return data as T;
+}
 export async function rpc<T = void>(
   name: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
-  if (!db) throw new Error("尚未連接服務");
-  const { data, error } = await db.rpc(name, args);
-  if (error) throw error;
-  return data as T;
+  return request<T>("/api/game", { kind: "rpc", name, args });
 }
-export async function rows<T>(
-  table: string,
-  filters: Record<string, string> = {},
-  or?: string,
-  order = "id",
-): Promise<T[]> {
-  if (!db) return [];
-  // Page beyond Supabase's default 1000-row response limit.
+// Ownership filters are enforced by the server from verified Identity, not supplied by the browser.
+export async function rows<T>(table: string): Promise<T[]> {
   const all: T[] = [];
-  for (let start = 0; ; start += 500) {
-    let query = db.from(table).select("*");
-    for (const [key, value] of Object.entries(filters))
-      query = query.eq(key, value);
-    if (or) query = query.or(or);
-    const { data, error } = await query.order(order).range(start, start + 499);
-    if (error) throw error;
-    all.push(...(data as T[]));
+  for (let page = 0; ; page++) {
+    const data = await request<T[]>("/api/game", { kind: "read", table, page });
+    all.push(...data);
     if (data.length < 500) return all;
   }
 }

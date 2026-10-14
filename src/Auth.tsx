@@ -1,40 +1,61 @@
-import { useState } from "react";
-import { db } from "./api";
+import { useEffect, useState } from "react";
+import {
+  signup,
+  login,
+  requestPasswordRecovery,
+  updateUser,
+  getSettings,
+  oauthLogin,
+  acceptInvite,
+  type Settings,
+  type AuthProvider,
+} from "@netlify/identity";
 import { message } from "./data";
 import { Monster } from "./Monster";
-export function Auth({ recovery = false }: { recovery?: boolean }) {
+export function Auth({
+  recovery = false,
+  inviteToken,
+  initialError = "",
+  onInviteComplete,
+}: {
+  recovery?: boolean;
+  inviteToken?: string;
+  initialError?: string;
+  onInviteComplete?: () => void;
+}) {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch(() =>
+        setNotice(
+          "Netlify Identity 尚未啟用或無法連線，請在 Netlify 專案設定啟用登入服務。",
+        ),
+      );
+  }, []);
   const [mode, setMode] = useState<"login" | "signup" | "reset" | "recover">(
-    recovery ? "recover" : "login",
+    recovery || inviteToken ? "recover" : "login",
   );
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [name, setName] = useState(""),
     [busy, setBusy] = useState(false),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(initialError);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!db) return;
+
     setBusy(true);
     setNotice("");
     try {
-      let error;
-      if (mode === "signup")
-        ({ error } = await db.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { display_name: name },
-            emailRedirectTo: location.origin + location.search,
-          },
-        }));
-      else if (mode === "reset")
-        ({ error } = await db.auth.resetPasswordForEmail(email, {
-          redirectTo: location.origin + "/?recovery=1",
-        }));
-      else if (mode === "recover")
-        ({ error } = await db.auth.updateUser({ password }));
-      else ({ error } = await db.auth.signInWithPassword({ email, password }));
-      if (error) throw error;
+      if (inviteToken) {
+        await acceptInvite(inviteToken, password);
+        onInviteComplete?.();
+        return;
+      }
+      if (mode === "signup") await signup(email, password, { full_name: name });
+      else if (mode === "reset") await requestPasswordRecovery(email);
+      else if (mode === "recover") await updateUser({ password });
+      else await login(email, password);
       if (mode === "signup")
         setNotice("註冊已送出，請檢查電郵並確認帳戶後登入。");
       if (mode === "reset") setNotice("如帳戶存在，你將收到重設密碼郵件。");
@@ -133,12 +154,19 @@ export function Auth({ recovery = false }: { recovery?: boolean }) {
           </button>
         </form>
         <p role="status">{notice}</p>
-        {!recovery && (
+        {!recovery && !inviteToken && (
           <div className="row">
             <button
               className="text-button"
+              disabled={
+                !settings || (settings.disableSignup && mode !== "signup")
+              }
               onClick={() => {
-                setMode(mode === "signup" ? "login" : "signup");
+                setMode(
+                  mode === "signup" || settings?.disableSignup
+                    ? "login"
+                    : "signup",
+                );
                 setNotice("");
               }}
             >
@@ -151,6 +179,26 @@ export function Auth({ recovery = false }: { recovery?: boolean }) {
               {mode === "reset" ? "返回登入" : "忘記密碼"}
             </button>
           </div>
+        )}
+        {!recovery && !inviteToken && settings && (
+          <div className="row">
+            {Object.entries(settings.providers)
+              .filter(([provider, enabled]) => provider !== "email" && enabled)
+              .map(([provider]) => (
+                <button
+                  key={provider}
+                  className="secondary"
+                  onClick={() => oauthLogin(provider as AuthProvider)}
+                >
+                  使用 {provider} 登入
+                </button>
+              ))}
+          </div>
+        )}
+        {settings?.disableSignup && (
+          <p className="small muted">
+            目前採邀請制，請使用管理員提供的邀請連結。
+          </p>
         )}
         <p className="small muted">
           遊戲反思與回饋可由學院管理員閱讀；波波的 AI 對話不開放給管理員。

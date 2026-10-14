@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import { onAuthChange, logout, getUser, type User } from "@netlify/identity";
+import { initializeAuth } from "./auth-session";
+type Session = { user: User };
 import {
   BookOpen,
   Compass,
@@ -15,7 +17,7 @@ import {
   Leaf,
   Send,
 } from "lucide-react";
-import { db, configured, rpc, rows } from "./api";
+import { rpc, rows } from "./api";
 import { Auth } from "./Auth";
 import { Monster } from "./Monster";
 const Admin = lazy(() => import("./Admin").then((m) => ({ default: m.Admin })));
@@ -50,7 +52,8 @@ const nav = [
 ] as const;
 export function App() {
   const [session, setSession] = useState<Session | null>(null),
-    [authReady, setAuthReady] = useState(!configured),
+    [authReady, setAuthReady] = useState(false),
+    [inviteToken, setInviteToken] = useState<string | undefined>(),
     [recovery, setRecovery] = useState(
       new URLSearchParams(location.search).has("recovery"),
     );
@@ -84,16 +87,12 @@ export function App() {
     is_self: boolean;
   } | null>(null);
   useEffect(() => {
-    if (!db) return;
-    db.auth.getSession().then(({ data, error }) => {
-      if (error) setError(error.message);
-      setSession(data.session);
-      setAuthReady(true);
-    });
-    const { data } = db.auth.onAuthStateChange((event, s) => {
-      setSession(s);
-      if (event === "PASSWORD_RECOVERY") setRecovery(true);
-      if (!s) {
+    let active = true;
+    const unsubscribe = onAuthChange((event, user) => {
+      if (!active) return;
+      setSession(user ? { user } : null);
+      if (event === "recovery") setRecovery(true);
+      if (!user) {
         setProfile(null);
         setAttempts([]);
         setCards([]);
@@ -101,32 +100,38 @@ export function App() {
         setTab("home");
       }
     });
-    return () => data.subscription.unsubscribe();
+    initializeAuth()
+      .then((result) => {
+        if (!active) return;
+        setSession(result.user ? { user: result.user } : null);
+        setRecovery(result.recovery);
+        setInviteToken(result.inviteToken);
+      })
+      .catch((e) => {
+        if (active) setError(message(e));
+      })
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
   const refresh = useCallback(async () => {
-    if (!db || !session) return;
+    if (!session) return;
     setLoading(true);
     try {
-      const p = await db
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      if (p.error) throw p.error;
-      setProfile(p.data as Profile);
-      // Explicit owner filters ensure admin players don't mix everyone's data into their personal view.
-      const [ms, as, cs, ts, rs, ds] = await Promise.all([
+      const [ps, ms, as, cs, ts, rs, ds] = await Promise.all([
+        rows<Profile>("profiles"),
         rows<Mission>("missions"),
-        rows<Attempt>("attempts", { player_id: session.user.id }),
-        rows<Card>("cards", { owner_id: session.user.id }),
-        rows<Trade>(
-          "trades",
-          {},
-          `sender_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`,
-        ),
+        rows<Attempt>("attempts"),
+        rows<Card>("cards"),
+        rows<Trade>("trades"),
         rows<Reward>("rewards"),
-        rows<Redemption>("redemptions", { player_id: session.user.id }),
+        rows<Redemption>("redemptions"),
       ]);
+      setProfile(ps[0] ?? null);
       setMissions(ms);
       setAttempts(as);
       setCards(cs);
@@ -160,7 +165,7 @@ export function App() {
     try {
       await fn();
       setNotice(success);
-      await refresh();
+      if (await getUser()) await refresh();
     } catch (e) {
       setError(message(e));
     } finally {
@@ -182,42 +187,21 @@ export function App() {
   const m = missions.find((x) => x.id === selected),
     a = attempts.find((x) => x.mission_id === selected);
   const myCards = cards.filter((c) => c.owner_id === session?.user.id);
-  if (!configured)
-    return (
-      <div className="setup">
-        <img src="/icon.svg" width="72" height="72" alt="失敗學院" />
-        <span className="eyebrow">FAILURE MONSTERS</span>
-        <h1>
-          學院準備好了。
-          <br />
-          下一步，連接服務。
-        </h1>
-        <p>
-          這個版本使用真實帳戶、資料庫與 AI。
-          <br />
-          目前尚未設定 Supabase，玩家功能暫未開放。
-        </p>
-        <div className="panel">
-          <h2>啟動前的三件事</h2>
-          <ol>
-            <li>建立 Supabase 專案，執行資料庫遷移。</li>
-            <li>設定前端連線資訊，以及伺服器端 AI 金鑰。</li>
-            <li>部署波波函式，建立管理員帳戶。</li>
-          </ol>
-          <p>完整步驟見專案 README.md 和 docs/SETUP.md。</p>
-        </div>
-        <p className="small muted">
-          未連線時不會建立假玩家、假進度或示範 AI 回覆。
-        </p>
-      </div>
-    );
   if (!authReady)
     return (
       <div className="setup" role="status">
         正在確認登入狀態…
       </div>
     );
-  if (!session || recovery) return <Auth recovery={recovery} />;
+  if (!session || recovery || inviteToken)
+    return (
+      <Auth
+        recovery={recovery}
+        inviteToken={inviteToken}
+        initialError={error}
+        onInviteComplete={() => setInviteToken(undefined)}
+      />
+    );
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -269,8 +253,7 @@ export function App() {
           className="nav-item signout"
           onClick={() =>
             void act(async () => {
-              const { error } = await db!.auth.signOut();
-              if (error) throw error;
+              await logout();
             }, "已登出")
           }
         >

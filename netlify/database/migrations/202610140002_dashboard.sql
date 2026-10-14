@@ -1,4 +1,5 @@
-create function public.admin_overview() returns jsonb language plpgsql stable security definer set search_path=public as $$
+set search_path=game,pg_temp;
+create function game.admin_overview() returns jsonb language plpgsql stable security definer set search_path=game,pg_temp as $$
 begin
  if not is_admin() then raise exception '只限管理員'; end if;
  return jsonb_build_object(
@@ -12,7 +13,7 @@ begin
  'activity',(select coalesce(jsonb_agg(x),'[]') from (select to_char(d,'YYYY-MM-DD') as day,(select count(*) from attempts where state='completed' and completed_at>=d and completed_at<d+interval '1 day') as completed from generate_series(date_trunc('day',now())-interval '13 days',date_trunc('day',now()),interval '1 day') d) x)
  );
 end $$;
-create function public.admin_players(p_search text default '',p_stage text default 'all',p_page integer default 0) returns jsonb language plpgsql stable security definer set search_path=public as $$
+create function game.admin_players(p_search text default '',p_stage text default 'all',p_page integer default 0) returns jsonb language plpgsql stable security definer set search_path=game,pg_temp as $$
 declare result jsonb;
 begin
  if not is_admin() then raise exception '只限管理員'; end if;
@@ -28,7 +29,7 @@ begin
  select jsonb_build_object('total',(select count(*) from filtered),'players',coalesce((select jsonb_agg(x) from (select * from filtered order by created_at desc,id limit 25 offset p_page*25) x),'[]')) into result;
  return result;
 end $$;
-create function public.admin_player_detail(p_player uuid) returns jsonb language plpgsql stable security definer set search_path=public as $$
+create function game.admin_player_detail(p_player uuid) returns jsonb language plpgsql stable security definer set search_path=game,pg_temp as $$
 begin
  if not is_admin() then raise exception '只限管理員'; end if;
  return jsonb_build_object(
@@ -40,7 +41,7 @@ begin
  'redemptions',(select coalesce(jsonb_agg(r),'[]') from redemptions r where player_id=p_player)
  );
 end $$;
-create function public.admin_inputs(p_kind text default 'feedback',p_search text default '',p_page integer default 0) returns jsonb language plpgsql stable security definer set search_path=public as $$
+create function game.admin_inputs(p_kind text default 'feedback',p_search text default '',p_page integer default 0) returns jsonb language plpgsql stable security definer set search_path=game,pg_temp as $$
 declare result jsonb;
 begin
  if not is_admin() then raise exception '只限管理員'; end if;
@@ -53,5 +54,5 @@ begin
  select jsonb_build_object('total',(select count(*) from filtered),'inputs',coalesce((select jsonb_agg(x) from (select * from filtered order by created_at desc,id limit 25 offset p_page*25) x),'[]')) into result;
  return result;
 end $$;
-revoke execute on function public.admin_overview(),public.admin_players(text,text,integer),public.admin_player_detail(uuid),public.admin_inputs(text,text,integer) from public,anon;
-grant execute on function public.admin_overview(),public.admin_players(text,text,integer),public.admin_player_detail(uuid),public.admin_inputs(text,text,integer) to authenticated;
+
+revoke execute on all functions in schema game from public;

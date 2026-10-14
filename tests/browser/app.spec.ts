@@ -23,111 +23,111 @@ const missions = [
 ];
 // Transport fixtures exercise UI states only. SQL behavior is verified separately by database.test.mjs.
 async function login(page: any) {
-  await page.addInitScript(
-    ({ uid }: any) => {
-      localStorage.setItem(
-        "sb-test-project-auth-token",
-        JSON.stringify({
-          access_token: "test-access-token",
-          refresh_token: "test-refresh-token",
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-          expires_in: 3600,
-          token_type: "bearer",
-          user: {
-            id: uid,
-            email: "test@example.test",
-            aud: "authenticated",
-            role: "authenticated",
-            app_metadata: {},
-            user_metadata: {},
-          },
-        }),
-      );
-    },
-    { uid },
+  const token =
+    "test." +
+    Buffer.from(
+      JSON.stringify({ sub: uid, exp: Math.floor(Date.now() / 1000) + 3600 }),
+    ).toString("base64url") +
+    ".fixture";
+  await page
+    .context()
+    .addCookies([
+      { name: "nf_jwt", value: token, url: "http://127.0.0.1:4174" },
+    ]);
+  await page.route("**/.netlify/identity/**", async (route: any) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: uid,
+        email: profile.email,
+        user_metadata: { full_name: profile.display_name },
+        app_metadata: { roles: ["admin"] },
+      }),
+    }),
   );
   let attempt: any = null;
-  await page.route(
-    "https://test-project.supabase.co/**",
-    async (route: any) => {
-      const u = new URL(route.request().url()),
-        path = u.pathname;
-      let data: any = [];
-      if (path === "/auth/v1/user") data = { id: uid, email: profile.email };
-      else if (path.endsWith("/profiles")) data = profile;
-      else if (path.endsWith("/missions")) data = missions;
-      else if (path.endsWith("/attempts")) data = attempt ? [attempt] : [];
-      else if (path.endsWith("/reserve_mission")) {
-        attempt = {
-          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          player_id: uid,
-          mission_id: "HK027",
-          state: "reserved",
-          invite: "invite",
-          expires_at: "2099-01-01",
-          created_at: "2026-10-14",
-          completed_at: null,
-        };
-        data = attempt.id;
-      } else if (path.endsWith("/submit_attempt")) {
-        attempt.state = "completed";
-        data = null;
-      } else if (path.endsWith("/admin_overview"))
-        data = {
-          players: 1,
-          completed: 1,
-          pending: 0,
-          feedback: 1,
-          reflections: 1,
-          redemptions: 0,
-          families: [{ family: "歪歪貓", completed: 1 }],
-          activity: [{ day: "2026-10-14", completed: 1 }],
-        };
-      else if (path.endsWith("/admin_players"))
-        data = {
-          total: 1,
-          players: [
-            { ...profile, completed: 1, pending: 0, feedback_count: 1 },
-          ],
-        };
-      else if (path.endsWith("/admin_player_detail"))
-        data = {
-          profile,
-          attempts: [],
-          reflections: [],
-          feedback: [{ body: "任務好有趣", created_at: "2026-10-14" }],
-          cards: [],
-          redemptions: [],
-        };
-      else if (path.endsWith("/admin_inputs"))
-        data = {
-          total: 1,
-          inputs: [
-            {
-              id: "1",
-              player_id: uid,
-              display_name: profile.display_name,
-              body: "想多試幾個任務",
-              created_at: "2026-10-14",
-              mission_id: null,
-            },
-          ],
-        };
-      else if (path.endsWith("/bobo"))
-        return route.fulfill({
-          status: 503,
-          contentType: "application/json",
-          body: JSON.stringify({
-            error: "波波的 AI 服務尚未設定，請聯絡管理員",
-          }),
-        });
-      await route.fulfill({
-        status: 200,
+  await page.route("**/api/**", async (route: any) => {
+    const u = new URL(route.request().url()),
+      path =
+        u.pathname === "/api/game"
+          ? "/" +
+            (route.request().postDataJSON().name ||
+              route.request().postDataJSON().table)
+          : u.pathname;
+    let data: any = [];
+    if (path === "/auth/v1/user") data = { id: uid, email: profile.email };
+    else if (path.endsWith("/profiles")) data = [profile];
+    else if (path.endsWith("/missions")) data = missions;
+    else if (path.endsWith("/attempts")) data = attempt ? [attempt] : [];
+    else if (path.endsWith("/reserve_mission")) {
+      attempt = {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        player_id: uid,
+        mission_id: "HK027",
+        state: "reserved",
+        invite: "invite",
+        expires_at: "2099-01-01",
+        created_at: "2026-10-14",
+        completed_at: null,
+      };
+      data = attempt.id;
+    } else if (path.endsWith("/submit_attempt")) {
+      attempt.state = "completed";
+      data = null;
+    } else if (path.endsWith("/admin_overview"))
+      data = {
+        players: 1,
+        completed: 1,
+        pending: 0,
+        feedback: 1,
+        reflections: 1,
+        redemptions: 0,
+        families: [{ family: "歪歪貓", completed: 1 }],
+        activity: [{ day: "2026-10-14", completed: 1 }],
+      };
+    else if (path.endsWith("/admin_players"))
+      data = {
+        total: 1,
+        players: [{ ...profile, completed: 1, pending: 0, feedback_count: 1 }],
+      };
+    else if (path.endsWith("/admin_player_detail"))
+      data = {
+        profile,
+        attempts: [],
+        reflections: [],
+        feedback: [{ body: "任務好有趣", created_at: "2026-10-14" }],
+        cards: [],
+        redemptions: [],
+      };
+    else if (path.endsWith("/admin_inputs"))
+      data = {
+        total: 1,
+        inputs: [
+          {
+            id: "1",
+            player_id: uid,
+            display_name: profile.display_name,
+            body: "想多試幾個任務",
+            created_at: "2026-10-14",
+            mission_id: null,
+          },
+        ],
+      };
+    else if (path.endsWith("/bobo"))
+      return route.fulfill({
+        status: 503,
         contentType: "application/json",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          error: "波波的 AI 服務尚未設定，請聯絡管理員",
+        }),
       });
-    },
-  );
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(data),
+    });
+  });
 }
 test("login page has labelled controls and no horizontal overflow on phone", async ({
   page,

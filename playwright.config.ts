@@ -14,8 +14,7 @@ export default defineConfig({
     },
   },
   webServer: {
-    command:
-      "VITE_SUPABASE_URL=https://test-project.supabase.co VITE_SUPABASE_ANON_KEY=test-public-key npm run dev -- --port 4174",
+    command: "npm run dev -- --port 4174",
     url: "http://127.0.0.1:4174",
     reuseExistingServer: false,
   },

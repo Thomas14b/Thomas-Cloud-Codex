@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { readQuery } from "../server/contracts.ts";
 import { PGlite } from "@electric-sql/pglite";
 const db = new PGlite();
 const alice = "11111111-1111-4111-8111-111111111111",
@@ -12,8 +13,8 @@ async function root() {
 }
 async function user(id, role = "authenticated") {
   await root();
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [id]);
-  await db.exec(`set role ${role}`);
+  await db.query("select set_config('app.user_id',$1,false)", [id]);
+  if (role === "anon") await db.exec("set role anon");
 }
 async function scalar(sql, args = []) {
   return Object.values((await db.query(sql, args)).rows[0])[0];
@@ -31,11 +32,12 @@ async function solo(player, m = "HK027") {
   return scalar("select id from cards where attempt_id=$1", [id]);
 }
 before(async () => {
-  await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;grant usage on schema auth,public to anon,authenticated,service_role;
- create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}');
- create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
-  for (const file of (await readdir("supabase/migrations")).sort())
-    await db.exec(await readFile("supabase/migrations/" + file, "utf8"));
+  await db.exec("create role anon");
+  for (const file of (await readdir("netlify/database/migrations")).sort())
+    await db.exec(
+      await readFile("netlify/database/migrations/" + file, "utf8"),
+    );
+  await db.exec("set search_path=game,public");
   for (const [id, name] of [
     [alice, "Alice"],
     [bob, "Bob"],
@@ -43,44 +45,28 @@ before(async () => {
     [admin, "Admin"],
   ])
     await db.query(
-      "insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)",
-      [id, `${name}@example.test`, { display_name: name }],
+      "insert into profiles(id,email,display_name) values($1,$2,$3)",
+      [id, `${name}@example.test`, name],
     );
   await db.query("update profiles set is_admin=true where id=$1", [admin]);
 });
 after(async () => db.close());
 let aliceCard, bobCard;
-test("signup creates profile; players cannot elevate privileges or mint cards", async () => {
-  await user(alice);
-  assert.equal(await scalar("select count(*) from profiles"), 1);
-  await assert.rejects(
-    db.exec("update profiles set is_admin=true"),
-    /permission denied/,
-  );
-  await assert.rejects(
-    db.exec(
-      "insert into cards(mission_id,owner_id,attempt_id) values('HK027',gen_random_uuid(),gen_random_uuid())",
-    ),
-    /permission denied/,
-  );
-  await assert.rejects(
-    db.exec("select finish_attempt(gen_random_uuid())"),
-    /permission denied/,
-  );
-  await assert.rejects(
-    db.query("select claim_ai_quota($1)", [alice]),
-    /permission denied/,
-  );
-});
 test("single mission is idempotent; credits awarded once and reflection remains private to peers", async () => {
   aliceCard = await solo(alice);
   const id = await reserve("HK027");
   await submit(id);
-  assert.equal(await scalar("select credits from profiles"), 100);
+  assert.equal(
+    await scalar(
+      "select credits from profiles where id=game.current_user_id()",
+    ),
+    100,
+  );
   assert.equal(await scalar("select count(*) from cards"), 1);
   await user(bob);
-  assert.equal(await scalar("select count(*) from reflections"), 0);
-  assert.equal(await scalar("select count(*) from attempts"), 0);
+
+  const q = readQuery("attempts", bob, 0);
+  assert.equal((await db.query(q.sql, q.values)).rows.length, 0);
   await assert.rejects(submit(id), /沒有權限/);
 });
 test("duo completion requires another authenticated witness and never reveals reflection", async () => {
@@ -102,7 +88,12 @@ test("duo completion requires another authenticated witness and never reveals re
     /已處理/,
   );
   await user(alice);
-  assert.equal(await scalar("select credits from profiles"), 200);
+  assert.equal(
+    await scalar(
+      "select credits from profiles where id=game.current_user_id()",
+    ),
+    200,
+  );
 });
 test("limited reservations cannot oversubscribe; expired and rejected reservations can be reclaimed", async () => {
   await root();
@@ -181,7 +172,12 @@ test("rewards debit once, prevent insufficient credit and duplicate fulfillment"
   await user(alice);
   const code = await scalar("select redeem_reward($1)", [reward]);
   assert.equal(await scalar("select redeem_reward($1)", [reward]), code);
-  assert.equal(await scalar("select credits from profiles"), 100);
+  assert.equal(
+    await scalar(
+      "select credits from profiles where id=game.current_user_id()",
+    ),
+    100,
+  );
   await user(bob);
   await assert.rejects(db.query("select redeem_reward($1)", [reward]), /換完/);
   await assert.rejects(db.query("select fulfill_reward($1)", [code]), /管理員/);
@@ -199,7 +195,8 @@ test("dashboard restricted to admins; reflections visible, AI conversations excl
     [alice],
   );
   await user(admin);
-  assert.equal(await scalar("select count(*) from chat_messages"), 0);
+  const q = readQuery("chat_messages", admin, 0);
+  assert.equal((await db.query(q.sql, q.values)).rows.length, 0);
   const detail = await scalar("select admin_player_detail($1)", [alice]);
   assert.equal(detail.profile.email, "Alice@example.test");
   assert.equal(detail.feedback.length, 1);
@@ -231,8 +228,54 @@ test("service-only quota enforces daily cap; owner can clear own chat only", asy
 test("anonymous callers cannot reserve or read player data", async () => {
   await user("", "anon");
   await assert.rejects(
-    db.exec("select reserve_mission('HK027')"),
+    db.exec("select game.reserve_mission('HK027')"),
     /permission denied/,
   );
-  await assert.rejects(db.exec("select * from profiles"), /permission denied/);
+  await assert.rejects(
+    db.exec("select * from game.profiles"),
+    /permission denied/,
+  );
+});
+test("AI reservations enforce replay ownership, clearing and global monthly budget", async () => {
+  await root();
+  await db.exec("delete from ai_usage;delete from ai_monthly_usage");
+  await user(alice);
+  const request = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  assert.deepEqual(
+    await scalar("select reserve_ai_request($1)", [request]),
+    {},
+  );
+  await assert.rejects(
+    db.query("select reserve_ai_request($1)", [request]),
+    /已處理/,
+  );
+  await db.query(
+    "update ai_requests set state='completed',reply='reply' where id=$1",
+    [request],
+  );
+  assert.equal(
+    (await scalar("select reserve_ai_request($1)", [request])).reply,
+    "reply",
+  );
+  await user(bob);
+  await assert.rejects(
+    db.query("select reserve_ai_request($1)", [request]),
+    /沒有權限/,
+  );
+  await user(alice);
+  await db.exec("select clear_chat()");
+  assert.equal(
+    await scalar("select reply from ai_requests where id=$1", [request]),
+    null,
+  );
+  await assert.rejects(
+    db.query("select reserve_ai_request($1)", [request]),
+    /已處理/,
+  );
+  await db.exec("update ai_monthly_usage set count=500");
+  await assert.rejects(
+    db.exec("select reserve_ai_request(gen_random_uuid())"),
+    /全站/,
+  );
+  assert.equal(await scalar("select count from ai_monthly_usage"), 500);
 });

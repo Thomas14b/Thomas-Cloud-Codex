@@ -29,38 +29,3 @@ export function extractReply(data: unknown): string {
   if (!text) throw new Error("AI 未傳回有效回覆");
   return text;
 }
-export async function askAI(
-  key: string,
-  model: string,
-  history: Message[],
-  message: string,
-  fetcher: typeof fetch = fetch,
-): Promise<string> {
-  const response = await fetcher("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    signal: AbortSignal.timeout(45000),
-    body: JSON.stringify({
-      model,
-      instructions,
-      input: [
-        ...history
-          .slice(-12)
-          .map((x) => ({ role: x.role, content: x.content.slice(0, 4000) })),
-        { role: "user", content: message },
-      ],
-      max_output_tokens: 700,
-      store: false,
-    }),
-  });
-  if (!response.ok)
-    throw new Error(
-      response.status === 429
-        ? "AI 服務繁忙或額度不足，請稍後再試"
-        : "AI 服務暫時無法回覆，請稍後重試",
-    );
-  return extractReply(await response.json());
-}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { db, rpc } from "./api";
+import { rpc, rows, request } from "./api";
 import { message } from "./data";
 import type { Chat } from "./data";
 import { Monster } from "./Monster";
@@ -13,16 +13,12 @@ export function ChatPanel({ userId }: { userId: string }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let active = true;
-    db!
-      .from("chat_messages")
-      .select("id,role,content")
-      .eq("player_id", userId)
-      .order("id", { ascending: false })
-      .limit(100)
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error) setError(error.message);
-        else setMessages((data as Chat[]).reverse());
+    rows<Chat>("chat_messages")
+      .then((data) => {
+        if (active) setMessages(data.reverse());
+      })
+      .catch((e) => {
+        if (active) setError(message(e));
       });
     return () => {
       active = false;
@@ -37,17 +33,11 @@ export function ChatPanel({ userId }: { userId: string }) {
     setBusy(true);
     setError("");
     try {
-      const { data, error } = await db!.functions.invoke("bobo", {
-        body: { message: input, consent: true },
+      const data = await request<{ reply: string }>("/api/bobo", {
+        message: input,
+        consent: true,
+        requestId: crypto.randomUUID(),
       });
-      if (error) {
-        let detail = "波波暫時未能連線，請稍後重試。";
-        try {
-          const body = await error.context.json();
-          detail = body.error || detail;
-        } catch {}
-        throw new Error(detail);
-      }
       if (!data?.reply) throw new Error("未收到有效 AI 回覆");
       setMessages((old) => [
         ...old,
@@ -149,7 +139,7 @@ export function ChatPanel({ userId }: { userId: string }) {
           </label>
           <div className="row between">
             <span className="small muted">
-              每日最多 20 次 · 最近 100 則紀錄
+              每日最多 20 次 · 全站每月 500 次試行額度
             </span>
             <button
               className="primary"

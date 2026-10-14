@@ -1,4 +1,0 @@
-project_id = "failure-monsters"
-[functions.bobo]
-# JWT is verified with Supabase Auth getUser inside the handler, supporting both signing key types.
-verify_jwt = false
