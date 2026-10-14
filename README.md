@@ -1,16 +1,23 @@
-# 14.05㎡ Room Studio
+# 失敗學院 · Failure Monsters
 
-Interactive Japanese-Muji room design viewer with a rotatable 3D model, time-of-day lighting, style palettes, and furniture visibility controls.
+Mobile-first Season 1 **prototype**, replacing the previous room studio on the main branch.
 
-This repository is a no-build static site. The deployable website is at the repository root and is published with GitHub Pages.
+## Run
 
-## Controls
+Serve this folder with any static HTTP server, e.g. `python3 -m http.server 8080`, then open the local URL.
 
-- Drag the model to rotate and use the camera buttons for preset angles.
-- Adjust the time slider or choose day, sunset, and night presets.
-- Switch Japanese, Scandinavian, or Japandi palettes.
-- Toggle furniture groups, doors, and the window treatment.
+## Demo
 
-## Model
+Six missions, one for each spirit family; QR deep links use `?mission=HK006` etc. Progress uses localStorage only. Bobo is a scripted demo, not a live AI. Duo verification, multi-account ownership, server-enforced card uses, permanent sealing, trading, rewards and full 10-level progression are **not implemented**. Never use the prototype's local usage counter to issue real limited-edition cards or prizes.
 
-The GLB is gzip-compressed and split into two text assets so GitHub Pages can serve it reliably. The browser restores it automatically before loading the scene.
+## Roadmap
+
+1. React + TypeScript PWA and character assets.
+2. Auth, database, immutable card-use ledger, server-side atomic reservations and sealing.
+3. Separate witness account for duo validation; private reflection owned by player.
+4. Real AI guide with privacy safeguards and usage limits.
+5. Printable QR codes linked to the final test domain, redemption and admin tools.
+
+## Historical source
+
+The prior project is preserved on branch `backup-before-failure-monsters-20261014`.
