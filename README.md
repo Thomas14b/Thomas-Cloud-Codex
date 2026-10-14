@@ -1,23 +1,42 @@
 # 失敗學院 · Failure Monsters
 
-Mobile-first Season 1 **prototype**, replacing the previous room studio on the main branch.
+Functional React + TypeScript web app with Supabase Auth/Postgres and a server-side OpenAI guide. Includes the administrator player-data dashboard.
 
-## Run
+## Implemented
 
-Serve this folder with any static HTTP server, e.g. `python3 -m http.server 8080`, then open the local URL.
+- Email signup/login/recovery; account-scoped persistent progress.
+- Six original missions, 24-hour reservations, server-enforced scarcity, separate-account witness confirmation, private-to-peers reflections.
+- Immutable card-use ledger, permanent sealing, atomic two-party exchanges, ten-level family progression.
+- Points, stock-limited rewards, idempotent redemption and single-use admin fulfillment.
+- Live AI request implementation with authenticated access, consent, saved history, 20-request daily quota and explicit provider errors.
+- Admin dashboard: player search, stages, levels, reflections, feedback, charts, paginated CSV export, mission/QR and reward management.
+- Administrators may read game reflections and feedback; AI conversations are excluded from admin access.
+- Responsive interface and PWA app shell. Online connection is required for gameplay writes and AI.
 
-## Demo
+## Start
 
-Six missions, one for each spirit family; QR deep links use `?mission=HK006` etc. Progress uses localStorage only. Bobo is a scripted demo, not a live AI. Duo verification, multi-account ownership, server-enforced card uses, permanent sealing, trading, rewards and full 10-level progression are **not implemented**. Never use the prototype's local usage counter to issue real limited-edition cards or prizes.
+```sh
+npm ci
+cp .env.example .env.local
+npm run dev
+```
 
-## Roadmap
+See **[完整設定指引](docs/SETUP.md)** for Supabase migrations, authentication URLs, AI secrets, administrator provisioning, deployment and live acceptance checks.
 
-1. React + TypeScript PWA and character assets.
-2. Auth, database, immutable card-use ledger, server-side atomic reservations and sealing.
-3. Separate witness account for duo validation; private reflection owned by player.
-4. Real AI guide with privacy safeguards and usage limits.
-5. Printable QR codes linked to the final test domain, redemption and admin tools.
+No cloud accounts have been provisioned for this implementation. Without configuration the app shows an honest setup screen; it does not simulate working accounts, data or AI. Six seed missions permit Level 1 per family; admins can add further missions to reach Level 10.
 
-## Historical source
+## Verify
 
-The prior project is preserved on branch `backup-before-failure-monsters-20261014`.
+```sh
+npm test
+npm run build
+npm run test:ui
+```
+
+SQL/RLS tests run in PGlite. Browser transport fixtures and AI provider substitutes are tests only; they are not shipped in the application. Actual Supabase/OpenAI integration and multi-connection concurrency checks remain part of cloud setup acceptance.
+
+- [Implementation decisions](docs/IMPLEMENTATION.md)
+- [Setup and live acceptance](docs/SETUP.md)
+- [Verification results](docs/VERIFICATION.md)
+
+The former prototype remains in Git history. The prior room studio is preserved on branch `backup-before-failure-monsters-20261014`.
